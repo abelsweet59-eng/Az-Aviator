@@ -1,1 +1,177 @@
 
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AZ Avatar - ፕላን አቪየተር ጨዋታ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { background-color: #0f172a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .neon-glow { text-shadow: 0 0 10px rgba(59, 130, 246, 0.7), 0 0 20px rgba(59, 130, 246, 0.5); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4">
+
+    <!-- Header / Logo -->
+    <header class="flex justify-between items-center border-b border-gray-800 pb-3">
+        <div class="flex items-center space-x-2">
+            <span class="text-2xl font-black text-blue-500 neon-glow">✈️ AZ AVATAR</span>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div class="bg-gray-800 px-3 py-1 rounded-full text-sm">
+                👥 अनላይን: <span id="playersCount" class="text-green-400 font-bold">140</span>
+            </div>
+            <div class="bg-blue-900/50 border border-blue-500 px-3 py-1 rounded-full text-sm">
+                💰 ቦርሳ: <span id="walletBalance" class="font-bold text-yellow-400">100</span> ብር
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Game Arena (Aviator Screen) -->
+    <main class="flex-grow flex flex-col items-center justify-center my-4">
+        <div class="w-full max-w-2xl h-72 bg-gradient-to-b from-gray-900 to-gray-950 border border-gray-800 rounded-2xl relative flex flex-col items-center justify-center overflow-hidden shadow-2xl">
+            
+            <!-- Background Flying Grid Effect -->
+            <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div>
+
+            <!-- Multiplier Display -->
+            <div id="multiplierDisplay" class="text-6xl font-black text-blue-400 neon-glow z-10 transition-transform">
+                1.00x
+            </div>
+            <div id="statusMessage" class="text-gray-400 text-sm mt-2 z-10 font-medium">
+                ዙሩ ሊጀምር ነው ይጠብቁ...
+            </div>
+
+            <!-- Plane Animation Element -->
+            <div id="planeIcon" class="absolute text-4xl transition-all duration-200 z-0 bottom-10 left-10 opacity-40">
+                🚀
+            </div>
+        </div>
+    </main>
+
+    <!-- Betting Controls Panel -->
+    <footer class="w-full max-w-2xl mx-auto bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-lg flex flex-col gap-3">
+        <div class="flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <span class="text-sm text-gray-400">ውርርድ መጠን (ብር):</span>
+                <button onclick="setBet(10)" class="bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded text-xs">10</button>
+                <button onclick="setBet(50)" class="bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded text-xs">50</button>
+                <button onclick="setBet(100)" class="bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded text-xs">100</button>
+            </div>
+            <div>
+                <input type="number" id="betAmountInput" value="10" class="w-20 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-center font-bold text-yellow-400 outline-none">
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button id="actionBtn" onclick="handleAction()" class="w-full py-3 bg-green-600 hover:bg-green-500 font-bold rounded-xl text-lg shadow-lg transition-all">
+                ውርርድ አስገባ (Place Bet)
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        const socket = io();
+        let balance = 100;
+        let isPlaying = false;
+        let hasCashedOut = false;
+
+        function setBet(amount) {
+            document.getElementById('betAmountInput').value = amount;
+        }
+
+        socket.on('syncGameState', (state) => {
+            document.getElementById('playersCount').innerText = state.playersCount;
+        });
+
+        socket.on('updatePlayersCount', (count) => {
+            document.getElementById('playersCount').innerText = count;
+        });
+
+        socket.on('gameWaiting', (data) => {
+            document.getElementById('statusMessage').innerText = "አዲስ ዙር ሊጀመር ነው...";
+            document.getElementById('multiplierDisplay').innerText = "1.00x";
+            hasCashedOut = false;
+            let btn = document.getElementById('actionBtn');
+            if (!isPlaying) {
+                btn.innerText = "ውርርድ አስገባ (Place Bet)";
+                btn.className = "w-full py-3 bg-green-600 hover:bg-green-500 font-bold rounded-xl text-lg shadow-lg transition-all";
+            }
+        });
+
+        socket.on('gameStarted', (data) => {
+            document.getElementById('statusMessage').innerText = "አውሮፕላኑ እየበረረ ነው! ✈️";
+        });
+
+        socket.on('avatarTick', (data) => {
+            document.getElementById('multiplierDisplay').innerText = data.multiplier.toFixed(2) + 'x';
+            
+            // 🚀 Simple Plane Movement Simulation
+            let plane = document.getElementById('planeIcon');
+            let posX = Math.min(80, (data.multiplier * 5));
+            let posY = Math.min(70, (data.multiplier * 4));
+            plane.style.left = posX + '%';
+            plane.style.bottom = posY + '%';
+
+            if (isPlaying && !hasCashedOut) {
+                let btn = document.getElementById('actionBtn');
+                let bet = Number(document.getElementById('betAmountInput').value);
+                let currentWin = Math.floor(bet * data.multiplier);
+                btn.innerText = `CASH OUT (${currentWin} ብር)`;
+            }
+        });
+
+        socket.on('avatarCrashed', (data) => {
+            document.getElementById('statusMessage').innerText = `💥 አውሮፕላኑ ተከስክሷል! (${data.crashedAt}x)`;
+            document.getElementById('multiplierDisplay').classList.add('text-red-500');
+            setTimeout(() => document.getElementById('multiplierDisplay').classList.remove('text-red-500'), 1000);
+            
+            if (isPlaying && !hasCashedOut) {
+                isPlaying = false;
+                hasCashedOut = true;
+                alert("በዚህ ዙር አልረፈዱም! አውሮፕላኑ ሄዷል።");
+                resetButton();
+            }
+        });
+
+        socket.on('cashOutSuccess', (data) => {
+            hasCashedOut = true;
+            isPlaying = false;
+            balance += (data.wonAmount - Number(document.getElementById('betAmountInput').value));
+            document.getElementById('walletBalance').innerText = balance;
+            alert(data.message);
+            resetButton();
+        });
+
+        function handleAction() {
+            let bet = Number(document.getElementById('betAmountInput').value);
+            if (!isPlaying) {
+                if (balance < bet) {
+                    alert("የቂሪ ሂሳብዎ በቂ አይደለም!");
+                    return;
+                }
+                isPlaying = true;
+                hasCashedOut = false;
+                let btn = document.getElementById('actionBtn');
+                btn.innerText = "Cash Out የሚሉበትን ይጠብቁ...";
+                btn.className = "w-full py-3 bg-yellow-600 hover:bg-yellow-500 font-bold rounded-xl text-lg shadow-lg transition-all";
+            } else {
+                if (!hasCashedOut) {
+                    socket.emit('playerCashOut', { betAmount: bet });
+                }
+            }
+        }
+
+        function resetButton() {
+            let btn = document.getElementById('actionBtn');
+            btn.innerText = "ውርርድ አስገባ (Place Bet)";
+            btn.className = "w-full py-3 bg-green-600 hover:bg-green-500 font-bold rounded-xl text-lg shadow-lg transition-all";
+        }
+
+        // Initialize user registration
+        socket.emit('registerRealUser', { userId: 'user_' + Math.floor(Math.random()*100000), username: 'Abel' });
+    </script>
+</body>
+</html>
